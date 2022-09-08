@@ -1,0 +1,8 @@
+"Phrases"
+{
+	"Prefix"
+	{
+		"#format" "{1:s}"
+		"en" "{green}{1} | {default}"
+	}
+}
