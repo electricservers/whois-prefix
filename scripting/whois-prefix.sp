@@ -3,15 +3,19 @@
 #include <morecolors>
 #include <tf2>
 #include <whois>
+#include <clientprefs>
 
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1"
+#define PLUGIN_VERSION "1.2"
 
 Database g_DB;
 bool g_Late;
 char g_Name[MAX_NAME_LENGTH][MAXPLAYERS];
+StringMap g_FlagStrings;
+Cookie g_ckTogglePrefixes;
+bool g_TogglePrefixes[MAXPLAYERS];
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
 	g_Late = late;
@@ -28,6 +32,47 @@ public Plugin myinfo = {
 public void OnPluginStart() {
 	Database.Connect(SQL_OnDatabaseConnection, "whois");
 	LoadTranslations("whois-prefix.phrases");
+	g_ckTogglePrefixes = new Cookie("whoisprefixes_toggle", "Toggle whois-prefix prefixes.", CookieAccess_Private);
+	RegAdminCmd("sm_toggleprefix", CMD_TogglePrefix, ADMFLAG_GENERIC);
+	PrepareFlagStrings();
+}
+
+public void OnClientCookiesCached(int client) {
+	char buffer[2];
+	g_ckTogglePrefixes.Get(client, buffer, sizeof(buffer));
+	g_TogglePrefixes[GetClientUserId(client)] = buffer[0] == '1';
+}
+
+public Action CMD_TogglePrefix(int client, int args) {
+	if (!AreClientCookiesCached(client))
+	{
+		ReplyToCommand(client, "[SM] Your settings have not loaded yet.");
+		return Plugin_Handled;
+	}
+	
+	int userid = GetClientUserId(client);
+	g_TogglePrefixes[userid] = !g_TogglePrefixes[userid];
+	
+	char buffer[2];
+	IntToString(g_TogglePrefixes[userid], buffer, sizeof(buffer));
+	g_ckTogglePrefixes.Set(client, buffer);
+	
+	MC_PrintToChat(client, "[SM] Prefixes %s.", g_TogglePrefixes[userid] ? "{green}enabled{default}" : "{red}disabled{default}");
+	return Plugin_Handled;
+}
+
+void PrepareFlagStrings() {
+	if (g_FlagStrings == null) {
+		g_FlagStrings = new StringMap();
+	}
+	g_FlagStrings.SetString("TF_Chat_Team_Loc", "(TEAM) ");
+	g_FlagStrings.SetString("TF_Chat_Team", "(TEAM) ");
+	g_FlagStrings.SetString("TF_Chat_Team_Dead", "*DEAD*(TEAM) ");
+	g_FlagStrings.SetString("TF_Chat_Spec", "(Spectator) ");
+	g_FlagStrings.SetString("TF_Chat_All", "");
+	g_FlagStrings.SetString("TF_Chat_AllDead", "*DEAD* ");
+	g_FlagStrings.SetString("TF_Chat_AllSpec", "*SPEC* ");
+	g_FlagStrings.SetString("TF_Chat_Coach", "(Coach) ");
 }
 
 public void SQL_OnDatabaseConnection(Database db, const char[] error, any data) {
@@ -98,42 +143,23 @@ public void Frame_OnMessageSent(DataPack pack) {
 	pack.ReadString(message, sizeof(message));
 	delete pack;
 	
-	char state[32];
-	FormatState(author, flagstring, state, sizeof(state));
-	
 	int client = GetClientOfUserId(author);
 	
+	char state[32];
+	g_FlagStrings.GetString(flagstring, state, sizeof(state));
+	
 	for (int i = 0; i < recipients.Length; i++) {
+		bool show = g_TogglePrefixes[recipients.Get(i)];
 		int rec = GetClientOfUserId(recipients.Get(i));
 		if (!IsClientInGame(rec)) {
 			continue;
 		}
-		if (g_Name[author][0] != '\0' && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
-			MC_PrintToChatEx(rec, client, "%t%s%s : %s", "Prefix", g_Name[author], state, name, message);
+		if (g_Name[author][0] != '\0' && show && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
+			MC_PrintToChatEx(rec, client, "%t", "Chat_Prefix", g_Name[author], state, name, message);
 		}
 		else {
-			MC_PrintToChatEx(rec, client, "%s%s : %s", state, name, message);
+			MC_PrintToChatEx(rec, client, "%t", "Chat_NoPrefix", state, name, message);
 		}
 	}
 	delete recipients;
-}
-
-void FormatState(int userid, const char[] flags, char[] buffer, int max) {
-	int client = GetClientOfUserId(userid);
-	bool isSpec = GetClientTeam(client) == view_as<int>(TFTeam_Spectator);
-	
-	if (!IsPlayerAlive(client) && !isSpec) {
-		StrCat(buffer, max, "*DEAD* ");
-	}
-	if (StrContains(flags, "TF_Chat_Team") != -1) {
-		StrCat(buffer, max, "(TEAM) ");
-	}
-	if (isSpec) {
-		if (StrEqual(flags, "TF_Chat_Spec")) {
-			StrCat(buffer, max, "(Spectator) ");
-		}
-		else {
-			StrCat(buffer, max, "*SPEC* ");
-		}
-	}
 } 

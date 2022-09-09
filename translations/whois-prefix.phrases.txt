@@ -1,8 +1,24 @@
 "Phrases"
 {
-	"Prefix"
+	"Chat_Prefix"
 	{
-		"#format" "{1:s}"
-		"en" "{green}{1} | {default}"
+		"#format" "{1:s},{2:s},{3:s},{4:s}"
+		
+		// 1: Prefix (always append {default} as soon as prefix ends)
+		// 2: State (DEAD, SPEC, TEAM)
+		// 3: Name
+		// 4: Message
+		// Default: "{green}{1}{default} |{2} {3} : {4}"
+		"en" "{green}{1}{default} |{2}{3} : {4}"
+	}
+	"Chat_NoPrefix"
+	{
+		"#format" "{1:s},{2:s},{3:s}"
+		
+		// 1: State (DEAD, SPEC, TEAM)
+		// 2: Name
+		// 3: Message
+		// Default: "{1} {2} : {3}"
+		"en" "{1}{2} : {3}"
 	}
 }
