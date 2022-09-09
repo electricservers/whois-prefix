@@ -2,6 +2,7 @@
 #include <chat-processor>
 #include <morecolors>
 #include <tf2>
+#include <whois>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -56,7 +57,6 @@ public void OnClientPostAdminCheck(int client) {
 	
 	char query[128];
 	g_DB.Format(query, sizeof(query), "SELECT name FROM whois_permname WHERE steam_id = '%s'", steamid);
-	PrintToServer(query);
 	g_DB.Query(SQL_OnNameReceived, query, GetClientUserId(client));
 }
 
@@ -68,14 +68,16 @@ public void SQL_OnNameReceived(Database db, DBResultSet results, const char[] er
 	}
 	
 	if (!results.FetchRow()) {
-		PrintToServer("ROWCOUNT 0");
 		return;
 	}
 	
 	int client = GetClientOfUserId(userid);
 	
 	results.FetchString(0, g_Name[client], sizeof(g_Name[]));
-	PrintToServer(g_Name[client]);
+}
+
+public void Whois_OnPermanameModified(int client, int target, const char[] name) {
+	strcopy(g_Name[target], sizeof(g_Name[]), name);
 }
 
 public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstring, char[] name, char[] message, bool &processcolors, bool &removecolors) {
