@@ -7,7 +7,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 Database g_DB;
 bool g_Late;
@@ -31,9 +31,8 @@ public void OnPluginStart() {
 }
 
 public void SQL_OnDatabaseConnection(Database db, const char[] error, any data) {
-	if (error[0] != '\0') {
-		LogError(error);
-		return;
+	if (db == null) {
+		SetFailState(error);
 	}
 	
 	g_DB = db;
@@ -61,29 +60,24 @@ public void OnClientPostAdminCheck(int client) {
 }
 
 public void SQL_OnNameReceived(Database db, DBResultSet results, const char[] error, int userid) {
-	if (db == null || results == null) {
+	if (results == null) {
 		LogError("SQL_OnNameReceived: %s", error);
-		delete results;
 		return;
 	}
-	
 	if (!results.FetchRow()) {
 		return;
 	}
-	
-	int client = GetClientOfUserId(userid);
-	
-	results.FetchString(0, g_Name[client], sizeof(g_Name[]));
+	results.FetchString(0, g_Name[userid], sizeof(g_Name[]));
 }
 
-public void Whois_OnPermanameModified(int client, int target, const char[] name) {
+public void Whois_OnPermanameModified(int userid, int target, const char[] name) {
 	strcopy(g_Name[target], sizeof(g_Name[]), name);
 }
 
 public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstring, char[] name, char[] message, bool &processcolors, bool &removecolors) {
 	DataPack pack = new DataPack();
 	ArrayList al = view_as<ArrayList>(CloneHandle(recipients));
-	pack.WriteCell(author);
+	pack.WriteCell(GetClientUserId(author));
 	pack.WriteCell(al);
 	pack.WriteString(flagstring);
 	pack.WriteString(name);
@@ -95,7 +89,7 @@ public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstr
 public void Frame_OnMessageSent(DataPack pack) {
 	pack.Reset();
 	int author = pack.ReadCell();
-	ArrayList recipients = view_as<ArrayList>(pack.ReadCell());
+	ArrayList recipients = pack.ReadCell();
 	char flagstring[32];
 	pack.ReadString(flagstring, sizeof(flagstring));
 	char name[MAX_NAME_LENGTH];
@@ -104,26 +98,28 @@ public void Frame_OnMessageSent(DataPack pack) {
 	pack.ReadString(message, sizeof(message));
 	delete pack;
 	
+	char state[32];
+	FormatState(author, flagstring, state, sizeof(state));
+	
+	int client = GetClientOfUserId(author);
+	
 	for (int i = 0; i < recipients.Length; i++) {
 		int rec = GetClientOfUserId(recipients.Get(i));
 		if (!IsClientInGame(rec)) {
 			continue;
 		}
-		
-		char state[32];
-		FormatState(author, flagstring, state, sizeof(state));
-		
 		if (g_Name[author][0] != '\0' && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
-			MC_PrintToChatEx(rec, author, "%t%s%s : %s", "Prefix", g_Name[author], state, name, message);
+			MC_PrintToChatEx(rec, client, "%t%s%s : %s", "Prefix", g_Name[author], state, name, message);
 		}
 		else {
-			MC_PrintToChatEx(rec, author, "%s%s : %s", state, name, message);
+			MC_PrintToChatEx(rec, client, "%s%s : %s", state, name, message);
 		}
 	}
 	delete recipients;
-} 
+}
 
-void FormatState(int client, const char[] flags, char[] buffer, int max) {
+void FormatState(int userid, const char[] flags, char[] buffer, int max) {
+	int client = GetClientOfUserId(userid);
 	bool isSpec = GetClientTeam(client) == view_as<int>(TFTeam_Spectator);
 	
 	if (!IsPlayerAlive(client) && !isSpec) {
@@ -140,4 +136,4 @@ void FormatState(int client, const char[] flags, char[] buffer, int max) {
 			StrCat(buffer, max, "*SPEC* ");
 		}
 	}
-}
+} 
