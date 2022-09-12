@@ -8,14 +8,14 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION "1.2.1"
 
 Database g_DB;
 bool g_Late;
-char g_Name[MAX_NAME_LENGTH][MAXPLAYERS];
+char g_Name[MAXPLAYERS + 1][MAX_NAME_LENGTH];
 StringMap g_FlagStrings;
 Cookie g_ckTogglePrefixes;
-bool g_TogglePrefixes[MAXPLAYERS];
+bool g_TogglePrefixes[MAXPLAYERS + 1];
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
 	g_Late = late;
@@ -40,7 +40,7 @@ public void OnPluginStart() {
 public void OnClientCookiesCached(int client) {
 	char buffer[2];
 	g_ckTogglePrefixes.Get(client, buffer, sizeof(buffer));
-	g_TogglePrefixes[GetClientUserId(client)] = buffer[0] == '1';
+	g_TogglePrefixes[client] = buffer[0] == '1';
 }
 
 public Action CMD_TogglePrefix(int client, int args) {
@@ -50,14 +50,13 @@ public Action CMD_TogglePrefix(int client, int args) {
 		return Plugin_Handled;
 	}
 	
-	int userid = GetClientUserId(client);
-	g_TogglePrefixes[userid] = !g_TogglePrefixes[userid];
+	g_TogglePrefixes[client] = !g_TogglePrefixes[client];
 	
 	char buffer[2];
-	IntToString(g_TogglePrefixes[userid], buffer, sizeof(buffer));
+	IntToString(g_TogglePrefixes[client], buffer, sizeof(buffer));
 	g_ckTogglePrefixes.Set(client, buffer);
 	
-	MC_PrintToChat(client, "[SM] Prefixes %s.", g_TogglePrefixes[userid] ? "{green}enabled{default}" : "{red}disabled{default}");
+	MC_PrintToChat(client, "[SM] Prefixes %s.", g_TogglePrefixes[client] ? "{green}enabled{default}" : "{red}disabled{default}");
 	return Plugin_Handled;
 }
 
@@ -104,6 +103,10 @@ public void OnClientPostAdminCheck(int client) {
 	g_DB.Query(SQL_OnNameReceived, query, GetClientUserId(client));
 }
 
+public void OnClientDisconnect(int client) {
+	g_Name[client][0] = '\0';
+}
+
 public void SQL_OnNameReceived(Database db, DBResultSet results, const char[] error, int userid) {
 	if (results == null) {
 		LogError("SQL_OnNameReceived: %s", error);
@@ -112,11 +115,11 @@ public void SQL_OnNameReceived(Database db, DBResultSet results, const char[] er
 	if (!results.FetchRow()) {
 		return;
 	}
-	results.FetchString(0, g_Name[userid], sizeof(g_Name[]));
+	results.FetchString(0, g_Name[GetClientOfUserId(userid)], sizeof(g_Name[]));
 }
 
 public void Whois_OnPermanameModified(int userid, int target, const char[] name) {
-	strcopy(g_Name[target], sizeof(g_Name[]), name);
+	strcopy(g_Name[GetClientOfUserId(target)], sizeof(g_Name[]), name);
 }
 
 public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstring, char[] name, char[] message, bool &processcolors, bool &removecolors) {
@@ -133,7 +136,7 @@ public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstr
 
 public void Frame_OnMessageSent(DataPack pack) {
 	pack.Reset();
-	int author = pack.ReadCell();
+	int author = GetClientOfUserId(pack.ReadCell());
 	ArrayList recipients = pack.ReadCell();
 	char flagstring[32];
 	pack.ReadString(flagstring, sizeof(flagstring));
@@ -143,22 +146,19 @@ public void Frame_OnMessageSent(DataPack pack) {
 	pack.ReadString(message, sizeof(message));
 	delete pack;
 	
-	int client = GetClientOfUserId(author);
-	
 	char state[32];
 	g_FlagStrings.GetString(flagstring, state, sizeof(state));
 	
 	for (int i = 0; i < recipients.Length; i++) {
-		bool show = g_TogglePrefixes[recipients.Get(i)];
 		int rec = GetClientOfUserId(recipients.Get(i));
 		if (!IsClientInGame(rec)) {
 			continue;
 		}
-		if (g_Name[author][0] != '\0' && show && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
-			MC_PrintToChatEx(rec, client, "%t", "Chat_Prefix", g_Name[author], state, name, message);
+		if (g_Name[author][0] != '\0' && g_TogglePrefixes[rec] && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
+			MC_PrintToChatEx(rec, author, "%t", "Chat_Prefix", g_Name[author], state, name, message);
 		}
 		else {
-			MC_PrintToChatEx(rec, client, "%t", "Chat_NoPrefix", state, name, message);
+			MC_PrintToChatEx(rec, author, "%t", "Chat_NoPrefix", state, name, message);
 		}
 	}
 	delete recipients;
