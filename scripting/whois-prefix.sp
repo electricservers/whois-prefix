@@ -8,18 +8,11 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.2.1"
+#define PLUGIN_VERSION "1.3"
 
-Database g_DB;
-bool g_Late;
-char g_Name[MAXPLAYERS + 1][MAX_NAME_LENGTH];
 StringMap g_FlagStrings;
 Cookie g_ckTogglePrefixes;
 bool g_TogglePrefixes[MAXPLAYERS + 1];
-
-public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
-	g_Late = late;
-}
 
 public Plugin myinfo = {
 	name = "Whois Prefix", 
@@ -30,7 +23,6 @@ public Plugin myinfo = {
 };
 
 public void OnPluginStart() {
-	Database.Connect(SQL_OnDatabaseConnection, "whois");
 	LoadTranslations("whois-prefix.phrases");
 	g_ckTogglePrefixes = new Cookie("whoisprefixes_toggle", "Toggle whois-prefix prefixes.", CookieAccess_Private);
 	RegAdminCmd("sm_toggleprefix", CMD_TogglePrefix, ADMFLAG_GENERIC);
@@ -74,54 +66,6 @@ void PrepareFlagStrings() {
 	g_FlagStrings.SetString("TF_Chat_Coach", "(Coach) ");
 }
 
-public void SQL_OnDatabaseConnection(Database db, const char[] error, any data) {
-	if (db == null) {
-		SetFailState(error);
-	}
-	
-	g_DB = db;
-	
-	if (g_Late) {
-		for (int i = 1; i <= MaxClients; i++) {
-			if (IsClientInGame(i)) {
-				OnClientPostAdminCheck(i);
-			}
-		}
-	}
-}
-
-public void OnClientPostAdminCheck(int client) {
-	if (g_DB == null) {
-		return;
-	}
-	
-	char steamid[32];
-	GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
-	
-	char query[128];
-	g_DB.Format(query, sizeof(query), "SELECT name FROM whois_permname WHERE steam_id = '%s'", steamid);
-	g_DB.Query(SQL_OnNameReceived, query, GetClientUserId(client));
-}
-
-public void OnClientDisconnect(int client) {
-	g_Name[client][0] = '\0';
-}
-
-public void SQL_OnNameReceived(Database db, DBResultSet results, const char[] error, int userid) {
-	if (results == null) {
-		LogError("SQL_OnNameReceived: %s", error);
-		return;
-	}
-	if (!results.FetchRow()) {
-		return;
-	}
-	results.FetchString(0, g_Name[GetClientOfUserId(userid)], sizeof(g_Name[]));
-}
-
-public void Whois_OnPermanameModified(int userid, int target, const char[] name) {
-	strcopy(g_Name[GetClientOfUserId(target)], sizeof(g_Name[]), name);
-}
-
 public Action CP_OnChatMessage(int &author, ArrayList recipients, char[] flagstring, char[] name, char[] message, bool &processcolors, bool &removecolors) {
 	DataPack pack = new DataPack();
 	ArrayList al = view_as<ArrayList>(CloneHandle(recipients));
@@ -149,13 +93,16 @@ public void Frame_OnMessageSent(DataPack pack) {
 	char state[32];
 	g_FlagStrings.GetString(flagstring, state, sizeof(state));
 	
+	char permaname[128];
+	Whois_GetPermaname(author, permaname, sizeof(permaname));
+	
 	for (int i = 0; i < recipients.Length; i++) {
 		int rec = GetClientOfUserId(recipients.Get(i));
 		if (!IsClientInGame(rec)) {
 			continue;
 		}
-		if (g_Name[author][0] != '\0' && g_TogglePrefixes[rec] && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
-			MC_PrintToChatEx(rec, author, "%t", "Chat_Prefix", g_Name[author], state, name, message);
+		if (permaname[0] != '\0' && g_TogglePrefixes[rec] && GetAdminFlag(GetUserAdmin(rec), Admin_Generic)) {
+			MC_PrintToChatEx(rec, author, "%t", "Chat_Prefix", permaname, state, name, message);
 		}
 		else {
 			MC_PrintToChatEx(rec, author, "%t", "Chat_NoPrefix", state, name, message);
